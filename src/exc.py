@@ -1,0 +1,2 @@
+class DateIsNotValid(Exception):
+    pass

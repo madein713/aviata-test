@@ -1,0 +1,61 @@
+version: "3.9"
+services:
+    db:
+        image: postgres
+        environment: 
+            - POSTGRES_DB=postgres
+            - POSTGRES_USER=postgres
+            - POSTGRES_PASSWORD=postgres
+        volumes: 
+            - ./postgres-data:/var/lib/postgresql/data
+
+    redis:
+        image: "redis:alpine"
+        ports:
+            - 6379:6379
+        
+    django:
+        working_dir: /code/src
+        build: .
+        command: bash -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+        depends_on: 
+            - db
+        volumes: 
+            - .:/code
+        ports:
+            - 8000:8000
+    
+    celery:
+        build: . 
+        working_dir: /code/src
+        command: celery -A core worker --loglevel=info -E
+        depends_on: 
+            - db
+            - django
+        volumes: 
+            - .:/code
+        environment: 
+            - DJANGO_SETTINGS_MODULE=core.settings
+        restart: on-failure
+    
+    beat:
+        command: celery -A core beat
+        working_dir: /code/src
+        build: .
+        depends_on: 
+            - celery
+        restart: on-failure
+        environment: 
+            - DJANGO_SETTINGS_MODULE=core.settings
+    
+    flower:
+        build: .
+        working_dir: /code/src
+        command: celery flower -A core --broker=redis://redis:6379 --loglevel=info --persistent=True
+        ports:
+            - 5555:5555
+        restart: always
+        depends_on: 
+            - beat
+        environment: 
+            - DJANGO_SETTINGS_MODULE=core.settings
